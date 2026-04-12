@@ -35,33 +35,50 @@ func Run(rootfs string, workdir string, env []string, cmdArgs []string) error {
 }
 
 // Child is the actual isolated process running INSIDE the namespaces.
+// Child is the actual isolated process running INSIDE the namespaces.
 func Child() error {
+	// The new contract expects: child <rootfs> <workdir> <cmd> <args...>
+	// os.Args[0] is the program name
+	// os.Args[1] is "child"
+	// os.Args[2] is the rootfs path
+	// os.Args[3] is the working directory
+	// os.Args[4] is the command (e.g., /bin/sh)
+	// os.Args[5:] are the command arguments (e.g., -c, echo "Testing")
 	if len(os.Args) < 5 {
-		return fmt.Errorf("child process requires rootfs, workdir, and command")
+		return fmt.Errorf("invalid child arguments, expected at least 5 but got %d", len(os.Args))
 	}
 
 	rootfs := os.Args[2]
 	workdir := os.Args[3]
-	cmdArgs := os.Args[4:]
+	command := os.Args[4]
+	cmdArgs := os.Args[5:]
 
-	// 1. Chroot locks the filesystem to our target directory
+	// 1. Hostname Isolation (Optional but good practice)
+	syscall.Sethostname([]byte("docksmith-container"))
+
+	// 2. Lock the container to the rootfs
 	if err := syscall.Chroot(rootfs); err != nil {
-		return fmt.Errorf("chroot failed (are you running as root?): %v", err)
+		return fmt.Errorf("chroot failed: %v", err)
 	}
 
-	// 2. Change into the requested working directory
+	// 3. Move into the requested Working Directory (e.g., /app)
+	// If the folder doesn't exist in the base image, create it!
+	os.MkdirAll(workdir, 0755)
 	if err := os.Chdir(workdir); err != nil {
 		return fmt.Errorf("chdir failed: %v", err)
 	}
 
-	// 3. Find the executable inside the new isolated filesystem
-	execPath, err := exec.LookPath(cmdArgs[0])
+	// 4. Find the executable inside the new isolated filesystem
+	execPath, err := exec.LookPath(command)
 	if err != nil {
 		return fmt.Errorf("command not found inside container: %v", err)
 	}
 
-	// 4. Replace the docksmith child process entirely with the target command (e.g., /bin/sh)
-	if err := syscall.Exec(execPath, cmdArgs, os.Environ()); err != nil {
+	// 5. Assemble the final arguments array (Linux requires the executable name to be arg 0)
+	finalArgs := append([]string{command}, cmdArgs...)
+
+	// 6. Replace the docksmith child process entirely with the target command (e.g., /bin/sh)
+	if err := syscall.Exec(execPath, finalArgs, os.Environ()); err != nil {
 		return fmt.Errorf("exec failed: %v", err)
 	}
 

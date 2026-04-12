@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -73,8 +74,28 @@ func Build(contextDir, imageName, tag string) error {
 
 		switch inst.Type {
 		case "FROM":
-			// TODO: Load base image layers
-			currentDigest = "sha256:mock_base_digest"
+			// PASTE ONLY YOUR RAW HASH HERE (No "sha256:" prefix)
+			hashOnly := "27fe3be27bc3e7e4d5f5b07ab27730c63e505e7c80ac72c845fe5c7b69da932c"
+			actualBaseHash := "sha256:" + hashOnly
+
+			currentDigest = actualBaseHash
+
+			// Locate the base layer on disk
+			homeDir, _ := os.UserHomeDir()
+			layerPath := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
+
+			info, err := os.Stat(layerPath)
+			if err != nil {
+				return fmt.Errorf("CRITICAL: Base layer not found at %s. Did you name it correctly?", layerPath)
+			}
+
+			// Add it to the manifest so the RUN command unpacks it!
+			manifest.Layers = append(manifest.Layers, Layer{
+				Digest:    actualBaseHash,
+				Size:      info.Size(),
+				CreatedBy: inst.Original,
+			})
+			fmt.Printf("  -> [Base] Loaded base image layer: %s\n", actualBaseHash[:19])
 
 		case "WORKDIR":
 			// Set the working directory for subsequent instructions
@@ -135,20 +156,75 @@ func Build(contextDir, imageName, tag string) error {
 
 				// --- THE EXECUTION ENGINE ---
 
-				// A. Create a temporary folder for this step's output
+				// A. Create a temporary workspace
 				tempDir, err := os.MkdirTemp("", "docksmith-layer-*")
 				if err != nil {
 					return fmt.Errorf("failed to create temp dir: %v", err)
 				}
 
-				// B. Real COPY and Mock RUN Execution
+				// tarSource decides which folder we compress at the end.
+				tarSource := tempDir
+
+				// B. Execution Logic
 				if inst.Type == "COPY" {
 					fmt.Printf("    -> [Execute] Copying files from context...\n")
 					if err := executeCopy(contextDir, tempDir, manifest.Config.WorkingDir, inst.Args); err != nil {
 						return fmt.Errorf("COPY instruction failed: %v", err)
 					}
+
 				} else if inst.Type == "RUN" {
-					os.WriteFile(filepath.Join(tempDir, "run_output.txt"), []byte("mock output from command"), 0644)
+					fmt.Printf("    -> [Execute] Running command: %s\n", inst.Args)
+
+					// 1. Setup OverlayFS directories to capture the Delta
+					baseDir := filepath.Join(tempDir, "base")
+					upperDir := filepath.Join(tempDir, "upper")
+					workDir := filepath.Join(tempDir, "work")
+					mergedDir := filepath.Join(tempDir, "merged")
+					os.MkdirAll(baseDir, 0755)
+					os.MkdirAll(upperDir, 0755)
+					os.MkdirAll(workDir, 0755)
+					os.MkdirAll(mergedDir, 0755)
+
+					// 2. Unpack all previous layers into baseDir to build the filesystem
+					homeDir, _ := os.UserHomeDir()
+					for _, layer := range manifest.Layers {
+						hashOnly := strings.TrimPrefix(layer.Digest, "sha256:")
+						layerTar := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
+						// We use the system's tar command for speed and simplicity
+						exec.Command("tar", "-xf", layerTar, "-C", baseDir).Run()
+					}
+
+					// 3. Mount OverlayFS (Linux Magic!)
+					mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", baseDir, upperDir, workDir)
+					mountCmd := exec.Command("sudo", "mount", "-t", "overlay", "overlay", "-o", mountOpts, mergedDir)
+					if err := mountCmd.Run(); err != nil {
+						return fmt.Errorf("failed to mount overlayfs: %v", err)
+					}
+
+					// 4. Trigger Member 4's Isolated Container!
+					runArgs := []string{"-E", "go", "run", "cmd/docksmith/main.go", "child", mergedDir, manifest.Config.WorkingDir, "/bin/sh", "-c", inst.Args}
+					runCmd := exec.Command("sudo", runArgs...)
+
+					runCmd.Env = os.Environ() // Keep host env so Go can compile
+					for k, v := range envMap {
+						runCmd.Env = append(runCmd.Env, fmt.Sprintf("%s=%s", k, v)) // Inject Docksmithfile ENVs
+					}
+
+					// Route the container's output to your terminal
+					runCmd.Stdout = os.Stdout
+					runCmd.Stderr = os.Stderr
+
+					err = runCmd.Run()
+
+					// 5. Unmount IMMEDIATELY so upperDir is finalized
+					exec.Command("sudo", "umount", mergedDir).Run()
+
+					if err != nil {
+						return fmt.Errorf("RUN command failed: %v", err)
+					}
+
+					// 6. We ONLY want to tar the changes, which OverlayFS neatly placed in upperDir!
+					tarSource = upperDir
 				}
 
 				// C. Package the result into a new Tar Layer!
@@ -157,12 +233,12 @@ func Build(contextDir, imageName, tag string) error {
 				layerDest := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
 
 				fmt.Printf("    -> [Tar] Compressing layer to %s.tar\n", hashOnly[:12])
-				if err := CreateLayerTar(tempDir, layerDest); err != nil {
+				if err := CreateLayerTar(tarSource, layerDest); err != nil {
 					return fmt.Errorf("failed to create layer tar: %v", err)
 				}
 
-				// Clean up the temp folder
-				os.RemoveAll(tempDir)
+				// Clean up the temp workspace
+				exec.Command("sudo", "rm", "-rf", tempDir).Run()
 
 				// D. Add the new layer to the Manifest
 				info, _ := os.Stat(layerDest)
