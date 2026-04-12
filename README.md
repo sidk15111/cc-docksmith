@@ -109,3 +109,65 @@ not reexecuting everything
 for this we make a SHA256 key of the layer done before COPY or RUN so it can be identified without useless ie non changing instructions making difference
 
 editing internal/cache/cache.go
+
+## member 4: runtime and isolation fellow
+
+this is toughest
+
+take a program, lock it inside a single, empty closet, and trick it into believing that the closet is the entire universe.
+
+we have to trick the process into thinking that it has its own private kernel and private fs
+
+we use re-exec pattern
+
+the docksmith binary will configure the Linux namespaces (PID, Mount, UTS) and then execute itself again as a hidden child process. That child process then uses chroot to lock itself inside the extracted temporary directory.
+
+editing internal/runtime/container.go
+
+FOR THIS TO WORK HAS TO BE SUDO
+since it is using chroot command
+
+### testing
+
+```
+# 1. Create a folder for the fake root filesystem
+mkdir alpine-root
+cd alpine-root
+
+# 2. Download a tiny Alpine Linux filesystem tarball
+wget https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.4-x86_64.tar.gz
+
+# 3. Extract it (this unpacks bin/, etc/, usr/, var/ into the alpine-root folder)
+tar -xzf alpine-minirootfs-3.18.4-x86_64.tar.gz
+rm alpine-minirootfs-3.18.4-x86_64.tar.gz
+cd ..
+```
+```
+sudo go run cmd/docksmith/main.go test-run ./alpine-root /bin/sh
+```
+the -E is to pass env var since otherwise it strips all env vars for sec purposes
+
+Your terminal should change to a basic # prompt.
+
+Type ls /. You will only see the Alpine folders, not your host machine's files.
+
+Type env. You will see MOCK_ENV=docksmith_test and none of your actual system environment variables.
+
+Type touch /PROOF.txt.
+
+Type exit to leave the container.
+
+Now, back on your host machine, type ls /. The PROOF.txt file will NOT be there. It will only exist inside ./alpine-root/PROOF.txt. You have successfully isolated a process from the host.
+
+yay it works after tons of debugging
+
+```
+debug stuff
+go cannot change namespace in middle of running program
+for creating a container docksmith has to execute itself
+The Parent: The command you actually typed (sudo docksmith test-run).
+The Child: The parent secretly spawns a new process calling docksmith child and pushes it into the new namespaces.
+
+parent was initially intentionally wiping childs memory so it booted with fuckall
+then it crashed because of unconditional initDocksmithDirs() asking for OS $HOME
+added that into a !child check so that it doesnt error out

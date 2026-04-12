@@ -5,9 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"docksmith/internal/cache"  //mem3 cache testing
-	"docksmith/internal/engine" //this was for mem2 testing test-tar
-	"docksmith/internal/parser" // mem1 parser testing
+	"docksmith/internal/cache"   //mem3 cache testing
+	"docksmith/internal/engine"  //this was for mem2 testing test-tar
+	"docksmith/internal/parser"  // mem1 parser testing
+	"docksmith/internal/runtime" //mem4 isolation and runtime
 )
 
 // initDocksmithDirs creates the required ~/.docksmith structure
@@ -38,22 +39,26 @@ func initDocksmithDirs() error {
 }
 
 func main() {
-	// 1. Initialize state directories before doing anything else
-	if err := initDocksmithDirs(); err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error initializing state: %v\n", err)
-		os.Exit(1)
-	}
-
-	// 2. Basic CLI Routing
-	// os.Args[0] is the program name itself. We need at least one command (os.Args[1]).
+	// 1. Bounds check FIRST. Prevent panic if user types no arguments.
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: docksmith <command> [args]")
 		fmt.Println("Commands: build, run, images, rmi")
 		os.Exit(1)
 	}
 
+	// 2. Safely grab the command
 	command := os.Args[1]
-	homeDir, _ := os.UserHomeDir() //this was used for test-tar
+
+	// 3. Initialize state directories ONLY if this is NOT the hidden child process
+	if command != "child" {
+		if err := initDocksmithDirs(); err != nil {
+			fmt.Fprintf(os.Stderr, "Fatal error initializing state: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	homeDir, _ := os.UserHomeDir() // Used for your test-tar command
+
 	// Route the command
 	switch command {
 	case "build":
@@ -129,6 +134,32 @@ func main() {
 			fmt.Println("\nSuccess! Cache logic is deterministic and correctly detects changes.")
 		} else {
 			fmt.Println("\nFailure: Cache keys did not behave as expected.")
+		}
+	case "child":
+		// This is hidden from the user. docksmith calls this internally.
+		if err := runtime.Child(); err != nil {
+			fmt.Fprintf(os.Stderr, "Container error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "test-run":
+		// Usage: sudo docksmith test-run <rootfs_path> <command>
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: docksmith test-run <rootfs_path> <command>")
+			os.Exit(1)
+		}
+		rootfs := os.Args[2]
+		cmdArgs := os.Args[3:]
+
+		fmt.Printf("Starting isolated container in %s...\n", rootfs)
+
+		// Setup mock environment and workdir
+		env := []string{"MOCK_ENV=docksmith_test"}
+		workdir := "/"
+
+		if err := runtime.Run(rootfs, workdir, env, cmdArgs); err != nil {
+			fmt.Printf("Runtime failed: %v\n", err)
+			os.Exit(1)
 		}
 
 	default:
