@@ -6,8 +6,28 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 )
+
+// IsHit checks if a layer tarball already exists for the given digest.
+func IsHit(digest string) bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false // If we can't find the home dir, default to a cache miss
+	}
+
+	// The digest looks like "sha256:1234abc...". We only want the "1234abc..." part for the filename.
+	hashOnly := strings.TrimPrefix(digest, "sha256:")
+
+	// Check ~/.docksmith/layers/<hash>.tar
+	layerPath := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
+
+	// os.Stat returns an error if the file does NOT exist
+	_, err = os.Stat(layerPath)
+	return err == nil
+}
 
 // ComputeKey calculates the deterministic SHA-256 cache key for a build step.
 func ComputeKey(prevDigest, instruction, workdir string, env map[string]string, copySourcePaths []string) (string, error) {
