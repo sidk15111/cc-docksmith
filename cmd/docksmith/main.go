@@ -89,8 +89,13 @@ func main() {
 
 	case "run":
 		fmt.Println("[Core] Routing to Runtime Isolation...")
+
 	case "images":
-		fmt.Println("[Core] Listing images...")
+		if err := engine.ListImages(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing images: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "rmi":
 		fmt.Println("[Core] Removing image...")
 
