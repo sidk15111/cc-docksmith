@@ -171,7 +171,7 @@ The Child: The parent secretly spawns a new process calling docksmith child and 
 parent was initially intentionally wiping childs memory so it booted with fuckall
 then it crashed because of unconditional initDocksmithDirs() asking for OS $HOME
 added that into a !child check so that it doesnt error out
-
+```
 # ORCHESTRATION
 
 reads the parsed instructions one by one, calculates the cache, runs the container (if needed), packs the tar layer, and finally writes the manifest.json file.
@@ -181,3 +181,6 @@ creating build file
 internal/engine/build.go
 
 some fuckass amount of errors are coming.
+
+linux magic OverlayFS is some god level shit 
+saved me so much fucking time its not even a joke
