@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -111,17 +112,61 @@ func Build(contextDir, imageName, tag string) error {
 			// 2. Check the cache AND the cascade flag
 			if !cascadeMiss && cache.IsHit(key) {
 				fmt.Println("  -> [Cache] Result: [CACHE HIT] - Reusing layer!")
-				// We don't need to build anything. Just grab the existing layer.
+
+				// Get the file size for the manifest
+				homeDir, _ := os.UserHomeDir()
+				hashOnly := strings.TrimPrefix(key, "sha256:")
+				layerPath := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
+				info, _ := os.Stat(layerPath)
+
+				manifest.Layers = append(manifest.Layers, Layer{
+					Digest:    key,
+					Size:      info.Size(),
+					CreatedBy: inst.Original,
+				})
 
 			} else {
 				fmt.Println("  -> [Cache] Result: [CACHE MISS] - Executing step...")
-				cascadeMiss = true // Flip the switch! All steps below this will now miss.
+				cascadeMiss = true
 
-				// TODO: We will eventually trigger Member 4 (Runtime) and Member 2 (Tar) here
-				// to actually execute the command and save the new .tar file.
+				// --- THE EXECUTION ENGINE ---
+
+				// A. Create a temporary folder for this step's output
+				tempDir, err := os.MkdirTemp("", "docksmith-layer-*")
+				if err != nil {
+					return fmt.Errorf("failed to create temp dir: %v", err)
+				}
+
+				// B. Mock the execution (Writing dummy files to represent the work)
+				if inst.Type == "COPY" {
+					os.WriteFile(filepath.Join(tempDir, "copied_data.txt"), []byte("mock file from context"), 0644)
+				} else if inst.Type == "RUN" {
+					os.WriteFile(filepath.Join(tempDir, "run_output.txt"), []byte("mock output from command"), 0644)
+				}
+
+				// C. Package the result into a new Tar Layer!
+				homeDir, _ := os.UserHomeDir()
+				hashOnly := strings.TrimPrefix(key, "sha256:")
+				layerDest := filepath.Join(homeDir, ".docksmith", "layers", hashOnly+".tar")
+
+				fmt.Printf("    -> [Tar] Compressing layer to %s.tar\n", hashOnly[:12])
+				if err := CreateLayerTar(tempDir, layerDest); err != nil {
+					return fmt.Errorf("failed to create layer tar: %v", err)
+				}
+
+				// Clean up the temp folder
+				os.RemoveAll(tempDir)
+
+				// D. Add the new layer to the Manifest
+				info, _ := os.Stat(layerDest)
+				manifest.Layers = append(manifest.Layers, Layer{
+					Digest:    key,
+					Size:      info.Size(),
+					CreatedBy: inst.Original,
+				})
 			}
 
-			// 3. Update the timeline tracker so the NEXT step uses this new hash!
+			// 3. Update the timeline tracker so the NEXT step uses this new hash
 			currentDigest = key
 		}
 	}
