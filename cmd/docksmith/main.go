@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"docksmith/internal/engine"
 	"docksmith/internal/parser"
 )
 
@@ -51,7 +52,7 @@ func main() {
 	}
 
 	command := os.Args[1]
-
+	homeDir, _ := os.UserHomeDir()
 	// Route the command
 	switch command {
 	case "build":
@@ -83,6 +84,20 @@ func main() {
 		fmt.Println("[Core] Listing images...")
 	case "rmi":
 		fmt.Println("[Core] Removing image...")
+	case "test-tar":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: docksmith test-tar <source_directory>")
+			os.Exit(1)
+		}
+		sourceDir := os.Args[2]
+		destTar := filepath.Join(filepath.Join(homeDir, ".docksmith", "layers"), "test_layer.tar")
+
+		fmt.Printf("Packing %s into %s...\n", sourceDir, destTar)
+		if err := engine.CreateLayerTar(sourceDir, destTar); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Tar created successfully! Now check its hash.")
 	default:
 		fmt.Printf("docksmith: '%s' is not a docksmith command.\n", command)
 		os.Exit(1)

@@ -70,6 +70,9 @@ ENV DEBUG=true
 CMD ["/bin/sh"]
 ```
 works so far!
+```
+git run cmd/docksmith/main.go build .go
+```
 
 
 ## member 2 : fs and manifest
@@ -80,4 +83,20 @@ tarball is how were storing and tar by default adds files in OS order of reading
 so we will sort alpha and then override timestamp so hash should be the same
 
 editing internal/engine/tar.go
+
+to test
+```
+mkdir test_context
+echo "hello world" > test_context/file1.txt
+echo "data" > test_context/file2.txt
+```
+```
+go run cmd/docksmith/main.go test-tar test_context
+```
+```
+sha256sum ~/.docksmith/layers/test_layer.tar
+```
+do last 2 again after changing timestamp by opening
+if they match yay!
+
 
