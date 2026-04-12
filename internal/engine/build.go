@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,9 +141,12 @@ func Build(contextDir, imageName, tag string) error {
 					return fmt.Errorf("failed to create temp dir: %v", err)
 				}
 
-				// B. Mock the execution (Writing dummy files to represent the work)
+				// B. Real COPY and Mock RUN Execution
 				if inst.Type == "COPY" {
-					os.WriteFile(filepath.Join(tempDir, "copied_data.txt"), []byte("mock file from context"), 0644)
+					fmt.Printf("    -> [Execute] Copying files from context...\n")
+					if err := executeCopy(contextDir, tempDir, manifest.Config.WorkingDir, inst.Args); err != nil {
+						return fmt.Errorf("COPY instruction failed: %v", err)
+					}
 				} else if inst.Type == "RUN" {
 					os.WriteFile(filepath.Join(tempDir, "run_output.txt"), []byte("mock output from command"), 0644)
 				}
@@ -213,4 +217,88 @@ func Build(contextDir, imageName, tag string) error {
 
 	fmt.Println("Build loop skeleton complete!")
 	return nil
+}
+
+// executeCopy parses the instruction args and routes the files
+func executeCopy(contextDir, rootfs, workdir, args string) error {
+	parts := strings.Fields(args)
+	if len(parts) < 2 {
+		return fmt.Errorf("COPY requires a source and destination")
+	}
+
+	// Support multiple sources if needed, but last element is always the destination
+	dest := parts[len(parts)-1]
+	srcPattern := parts[0] // We will keep it simple and just use the first source for now
+
+	// 1. Resolve destination path inside the container
+	var finalDest string
+	if filepath.IsAbs(dest) {
+		finalDest = filepath.Join(rootfs, dest)
+	} else {
+		finalDest = filepath.Join(rootfs, workdir, dest)
+	}
+
+	// 2. Resolve source path on the host
+	srcPath := filepath.Join(contextDir, srcPattern)
+
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return fmt.Errorf("source file/directory not found in context: %v", err)
+	}
+
+	// 3. Create destination directory if it doesn't exist
+	if err := os.MkdirAll(finalDest, 0755); err != nil {
+		return err
+	}
+
+	// 4. Copy the data
+	if info.IsDir() {
+		return copyDir(srcPath, finalDest)
+	}
+	return copyFile(srcPath, filepath.Join(finalDest, filepath.Base(srcPath)))
+}
+
+// copyDir recursively copies a directory tree
+func copyDir(src string, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return err
+			}
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// copyFile copies a single file
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
