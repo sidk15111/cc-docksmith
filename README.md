@@ -41,3 +41,19 @@ This is where you execute a process.
     You then run the specified CMD inside that temporary directory, fully isolated from the host machine.
 
     A file written inside this container must not show up on your actual host machine.
+
+# team member roles
+
+## member 1
+
+parser guy
+The build language uses files named Docksmithfile.
+
+It must recognize exactly 6 instructions: FROM, COPY, RUN, WORKDIR, ENV, CMD.
+
+Any unrecognized instruction must fail immediately with a clear error and the exact line number.
+
+updating internal/parser/parser.go
+and adding stuff in build case in main.go and in import
+
+works so far!

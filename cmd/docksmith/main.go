@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"docksmith/internal/parser"
 )
 
 // initDocksmithDirs creates the required ~/.docksmith structure
@@ -53,8 +55,28 @@ func main() {
 	// Route the command
 	switch command {
 	case "build":
-		// Eventually this will call something like engine.Build(os.Args[2:])
-		fmt.Println("[Core] Routing to Build Engine...")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: docksmith build <context>")
+			os.Exit(1)
+		}
+
+		contextDir := os.Args[2]
+		docksmithFilePath := filepath.Join(contextDir, "Docksmithfile")
+
+		fmt.Printf("Parsing %s...\n", docksmithFilePath)
+
+		// Call the parser function you just wrote
+		instructions, err := parser.Parse(docksmithFilePath)
+		if err != nil {
+			fmt.Printf("Build failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Print the parsed instructions to verify it worked
+		fmt.Println("Successfully parsed instructions:")
+		for _, inst := range instructions {
+			fmt.Printf("  Line %d: Type: [%s], Args: [%s]\n", inst.LineNum, inst.Type, inst.Args)
+		}
 	case "run":
 		fmt.Println("[Core] Routing to Runtime Isolation...")
 	case "images":
