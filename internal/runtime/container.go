@@ -67,6 +67,16 @@ func Child() error {
 	if err := os.Chdir(workdir); err != nil {
 		return fmt.Errorf("chdir failed: %v", err)
 	}
+	//this did not work
+	// This is required for many basic Linux tools to work
+	os.MkdirAll("/proc", 0755)
+	if err := syscall.Mount("proc", "/proc", "proc", 0, ""); err != nil {
+		// We don't want to crash if it's already mounted, but it's good to know
+		fmt.Printf("Warning: proc mount failed: %v\n", err)
+	}
+
+	// 2. Clear the Mount on exit (Crucial!)
+	defer syscall.Unmount("/proc", 0)
 
 	// 4. Find the executable inside the new isolated filesystem
 	execPath, err := exec.LookPath(command)

@@ -88,7 +88,30 @@ func main() {
 		}
 
 	case "run":
-		fmt.Println("[Core] Routing to Runtime Isolation...")
+		// Usage: docksmith run myapp:latest [/bin/sh]
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: docksmith run <image:tag> [command...]")
+			os.Exit(1)
+		}
+
+		fullTag := os.Args[2]
+		parts := strings.Split(fullTag, ":")
+		name := parts[0]
+		tag := "latest"
+		if len(parts) > 1 {
+			tag = parts[1]
+		}
+
+		// Grab any extra arguments as the override command
+		var userCmd []string
+		if len(os.Args) > 3 {
+			userCmd = os.Args[3:]
+		}
+
+		if err := engine.RunImage(name, tag, userCmd); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
 
 	case "images":
 		if err := engine.ListImages(); err != nil {
