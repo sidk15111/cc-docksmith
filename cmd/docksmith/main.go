@@ -5,8 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"docksmith/internal/engine"
-	"docksmith/internal/parser"
+	"docksmith/internal/cache"  //mem3 cache testing
+	"docksmith/internal/engine" //this was for mem2 testing test-tar
+	"docksmith/internal/parser" // mem1 parser testing
 )
 
 // initDocksmithDirs creates the required ~/.docksmith structure
@@ -52,7 +53,7 @@ func main() {
 	}
 
 	command := os.Args[1]
-	homeDir, _ := os.UserHomeDir()
+	homeDir, _ := os.UserHomeDir() //this was used for test-tar
 	// Route the command
 	switch command {
 	case "build":
@@ -84,6 +85,7 @@ func main() {
 		fmt.Println("[Core] Listing images...")
 	case "rmi":
 		fmt.Println("[Core] Removing image...")
+
 	case "test-tar":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: docksmith test-tar <source_directory>")
@@ -98,6 +100,37 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Tar created successfully! Now check its hash.")
+
+	case "test-cache":
+		// Mock state representing a build step
+		prevDigest := "sha256:1234567890abcdef"
+		instruction := "RUN echo 'Building Docksmith'"
+		workdir := "/app"
+		env := map[string]string{
+			"PATH":  "/usr/bin",
+			"DEBUG": "true",
+		}
+
+		// 1. Compute the key the first time
+		key1, _ := cache.ComputeKey(prevDigest, instruction, workdir, env, nil)
+		fmt.Println("Hash 1 (Initial):     ", key1)
+
+		// 2. Compute it again without changing anything
+		key2, _ := cache.ComputeKey(prevDigest, instruction, workdir, env, nil)
+		fmt.Println("Hash 2 (No Changes):  ", key2)
+
+		// 3. Modify the ENV slightly to simulate a changed context
+		env["DEBUG"] = "false"
+		key3, _ := cache.ComputeKey(prevDigest, instruction, workdir, env, nil)
+		fmt.Println("Hash 3 (Modified ENV):", key3)
+
+		// Verify the logic
+		if key1 == key2 && key1 != key3 {
+			fmt.Println("\nSuccess! Cache logic is deterministic and correctly detects changes.")
+		} else {
+			fmt.Println("\nFailure: Cache keys did not behave as expected.")
+		}
+
 	default:
 		fmt.Printf("docksmith: '%s' is not a docksmith command.\n", command)
 		os.Exit(1)

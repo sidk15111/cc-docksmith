@@ -97,6 +97,15 @@ go run cmd/docksmith/main.go test-tar test_context
 sha256sum ~/.docksmith/layers/test_layer.tar
 ```
 do last 2 again after changing timestamp by opening
+
 if they match yay!
 
 
+## member 3: cache guy
+
+if docksmith build is done 2 times without any change, stored layer for 2nd run should be used
+not reexecuting everything
+
+for this we make a SHA256 key of the layer done before COPY or RUN so it can be identified without useless ie non changing instructions making difference
+
+editing internal/cache/cache.go
