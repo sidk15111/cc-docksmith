@@ -44,7 +44,7 @@ This is where you execute a process.
 
 # team member roles
 
-## member 1
+## member 1 : parser
 
 parser guy
 The build language uses files named Docksmithfile.
@@ -56,4 +56,28 @@ Any unrecognized instruction must fail immediately with a clear error and the ex
 updating internal/parser/parser.go
 and adding stuff in build case in main.go and in import
 
+to test make dummy Docksmithfile
+<!--
+# This is a test Docksmithfile
+FROM alpine:latest
+
+WORKDIR /app
+
+COPY src/ dest/
+RUN echo "Testing the parser"
+ENV DEBUG=true
+
+CMD ["/bin/sh"]
+-->
 works so far!
+
+
+## member 2 : fs and manifest
+
+it should be perfectly reproducible, if hashed should give same SHA256 back every single time
+regardless of path it just uses /
+tarball is how were storing and tar by default adds files in OS order of reading which changes so it would fail
+so we will sort alpha and then override timestamp so hash should be the same
+
+editing internal/engine/tar.go
+
