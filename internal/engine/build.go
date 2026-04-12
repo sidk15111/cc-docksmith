@@ -1,6 +1,9 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -172,6 +175,41 @@ func Build(contextDir, imageName, tag string) error {
 	}
 
 	// 4. TODO: Write the final manifest to ~/.docksmith/images/
+	// 4. Write the final manifest to ~/.docksmith/images/
+	fmt.Println("Step 7: Finalizing image manifest...")
+
+	// A. The PDF Rule: Digest must be empty when calculating the hash
+	manifest.Digest = ""
+
+	// Convert the Go struct to beautifully formatted JSON
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode manifest: %v", err)
+	}
+
+	// B. Calculate the SHA-256 hash of the JSON bytes
+	h := sha256.New()
+	h.Write(manifestBytes)
+	manifestHash := hex.EncodeToString(h.Sum(nil))
+
+	// C. Update the manifest with its true digest
+	manifest.Digest = "sha256:" + manifestHash
+
+	// D. Write it to disk!
+	// The PDF requires the file to be stored in images/ named by the image name.
+	// For simplicity, we will save it as <name>_<tag>.json
+	homeDir, _ := os.UserHomeDir()
+	manifestName := fmt.Sprintf("%s_%s.json", manifest.Name, manifest.Tag)
+	manifestPath := filepath.Join(homeDir, ".docksmith", "images", manifestName)
+
+	// Re-marshal to include the new digest field
+	finalBytes, _ := json.MarshalIndent(manifest, "", "  ")
+
+	if err := os.WriteFile(manifestPath, finalBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write manifest to disk: %v", err)
+	}
+
+	fmt.Printf("Successfully built %s %s:%s\n", manifest.Digest[:19], manifest.Name, manifest.Tag)
 
 	fmt.Println("Build loop skeleton complete!")
 	return nil
