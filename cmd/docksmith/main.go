@@ -120,7 +120,22 @@ func main() {
 		}
 
 	case "rmi":
-		fmt.Println("[Core] Removing image...")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: docksmith rmi <image:tag>")
+			os.Exit(1)
+		}
+		fullTag := os.Args[2]
+		parts := strings.Split(fullTag, ":")
+		name := parts[0]
+		tag := "latest"
+		if len(parts) > 1 {
+			tag = parts[1]
+		}
+
+		if err := engine.RemoveImage(name, tag); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 
 	case "test-tar":
 		if len(os.Args) < 3 {
