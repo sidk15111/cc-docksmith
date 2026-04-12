@@ -57,7 +57,7 @@ updating internal/parser/parser.go
 and adding stuff in build case in main.go and in import
 
 to test make dummy Docksmithfile
-'''
+```
 # This is a test Docksmithfile
 FROM alpine:latest
 
@@ -68,7 +68,7 @@ RUN echo "Testing the parser"
 ENV DEBUG=true
 
 CMD ["/bin/sh"]
-'''
+```
 works so far!
 
 
