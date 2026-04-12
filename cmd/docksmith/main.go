@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"docksmith/internal/cache"   //mem3 cache testing
-	"docksmith/internal/engine"  //this was for mem2 testing test-tar
-	"docksmith/internal/parser"  // mem1 parser testing
+	"docksmith/internal/cache"  //mem3 cache testing
+	"docksmith/internal/engine" //this was for mem2 testing test-tar
+
+	//"docksmith/internal/parser"  // mem1 parser testing
 	"docksmith/internal/runtime" //mem4 isolation and runtime
 )
 
@@ -61,29 +63,30 @@ func main() {
 
 	// Route the command
 	switch command {
+
 	case "build":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: docksmith build <context>")
+		// Usage: docksmith build -t myapp:latest .
+		if len(os.Args) < 5 || os.Args[2] != "-t" {
+			fmt.Println("Usage: docksmith build -t <name:tag> <context>")
 			os.Exit(1)
 		}
 
-		contextDir := os.Args[2]
-		docksmithFilePath := filepath.Join(contextDir, "Docksmithfile")
+		fullTag := os.Args[3]
+		contextDir := os.Args[4]
 
-		fmt.Printf("Parsing %s...\n", docksmithFilePath)
+		// Parse the fullTag dynamically
+		parts := strings.Split(fullTag, ":")
+		name := parts[0]
+		tag := "latest" // Default to latest if no tag is provided
+		if len(parts) > 1 {
+			tag = parts[1]
+		}
 
-		// Call the parser function you just wrote
-		instructions, err := parser.Parse(docksmithFilePath)
-		if err != nil {
-			fmt.Printf("Build failed: %v\n", err)
+		if err := engine.Build(contextDir, name, tag); err != nil {
+			fmt.Fprintf(os.Stderr, "Build failed: %v\n", err)
 			os.Exit(1)
 		}
 
-		// Print the parsed instructions to verify it worked
-		fmt.Println("Successfully parsed instructions:")
-		for _, inst := range instructions {
-			fmt.Printf("  Line %d: Type: [%s], Args: [%s]\n", inst.LineNum, inst.Type, inst.Args)
-		}
 	case "run":
 		fmt.Println("[Core] Routing to Runtime Isolation...")
 	case "images":
