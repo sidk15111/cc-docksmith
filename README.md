@@ -75,7 +75,7 @@ git run cmd/docksmith/main.go build .go
 ```
 
 
-## member 2 : fs and manifest
+## member 2 : fs and manifest (tar guy)
 
 it should be perfectly reproducible, if hashed should give same SHA256 back every single time
 regardless of path it just uses /
