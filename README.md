@@ -1,3 +1,4 @@
+# SO FAR I THINK ITS DONE
 has to run on linux
 code lives in wherever in your system
 
