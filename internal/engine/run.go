@@ -83,7 +83,16 @@ func RunImage(imageName, tag string, userCmd []string) error {
 	// 4. Trigger Member 4's Runtime (Interactive Mode!)
 	fmt.Printf("=> Booting isolated container: %s\n\n", strings.Join(finalCmd, " "))
 
-	runArgs := []string{"-E", "go", "run", "cmd/docksmith/main.go", "child", mergedDir, manifest.Config.WorkingDir}
+	// Get the absolute path to the currently running docksmith binary
+	docksmithExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to locate docksmith executable: %v", err)
+	}
+
+	// Trigger Member 4's Runtime (Interactive Mode!)
+	fmt.Printf("=> Booting isolated container: %s\n\n", strings.Join(finalCmd, " "))
+
+	runArgs := []string{"-E", docksmithExe, "child", mergedDir, manifest.Config.WorkingDir}
 	runArgs = append(runArgs, finalCmd...)
 
 	runCmd := exec.Command("sudo", runArgs...)

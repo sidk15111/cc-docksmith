@@ -207,7 +207,14 @@ func Build(contextDir, imageName, tag string) error {
 					}
 
 					// 4. Trigger Member 4's Isolated Container!
-					runArgs := []string{"-E", "go", "run", "cmd/docksmith/main.go", "child", mergedDir, manifest.Config.WorkingDir, "/bin/sh", "-c", inst.Args}
+					// Get the absolute path to the currently running docksmith binary
+					docksmithExe, err := os.Executable()
+					if err != nil {
+						return fmt.Errorf("failed to locate docksmith executable: %v", err)
+					}
+
+					// Trigger Member 4's Isolated Container by calling OURSELVES!
+					runArgs := []string{"-E", docksmithExe, "child", mergedDir, manifest.Config.WorkingDir, "/bin/sh", "-c", inst.Args}
 					runCmd := exec.Command("sudo", runArgs...)
 
 					runCmd.Env = os.Environ() // Keep host env so Go can compile
