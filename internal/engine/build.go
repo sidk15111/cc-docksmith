@@ -74,10 +74,15 @@ func Build(contextDir, imageName, tag string) error {
 
 		switch inst.Type {
 		case "FROM":
-			// PASTE ONLY YOUR RAW HASH HERE (No "sha256:" prefix)
-			hashOnly := "27fe3be27bc3e7e4d5f5b07ab27730c63e505e7c80ac72c845fe5c7b69da932c"
-			actualBaseHash := "sha256:" + hashOnly
+			// Read the base hash dynamically from the environment!
+			envHash := os.Getenv("DOCKSMITH_BASE_HASH")
+			if envHash == "" {
+				return fmt.Errorf("CRITICAL: DOCKSMITH_BASE_HASH environment variable not set. Did you run the bootstrap script?")
+			}
 
+			// Clean it up just in case the script forgot the prefix
+			hashOnly := strings.TrimPrefix(envHash, "sha256:")
+			actualBaseHash := "sha256:" + hashOnly
 			currentDigest = actualBaseHash
 
 			// Locate the base layer on disk
@@ -86,16 +91,16 @@ func Build(contextDir, imageName, tag string) error {
 
 			info, err := os.Stat(layerPath)
 			if err != nil {
-				return fmt.Errorf("CRITICAL: Base layer not found at %s. Did you name it correctly?", layerPath)
+				return fmt.Errorf("CRITICAL: Base layer not found at %s. Bootstrap script failed to place it", layerPath)
 			}
 
-			// Add it to the manifest so the RUN command unpacks it!
+			// Add it to the manifest
 			manifest.Layers = append(manifest.Layers, Layer{
 				Digest:    actualBaseHash,
 				Size:      info.Size(),
 				CreatedBy: inst.Original,
 			})
-			fmt.Printf("  -> [Base] Loaded base image layer: %s\n", actualBaseHash[:19])
+			fmt.Printf("  -> [Base] Loaded dynamic base image: %s\n", actualBaseHash[:19])
 
 		case "WORKDIR":
 			// Set the working directory for subsequent instructions

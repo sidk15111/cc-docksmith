@@ -1,0 +1,6 @@
+FROM alpine:3.18
+WORKDIR /app
+ENV DEBUG=true
+COPY src/ dest/
+RUN echo "Testing the orchestrator"
+CMD ["/bin/sh"]
